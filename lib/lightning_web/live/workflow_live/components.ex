@@ -779,7 +779,6 @@ defmodule LightningWeb.WorkflowLive.Components do
           label="Workflow Name"
           name="workflow_name"
         />
-        <%= inspect(@form.source.valid?) %>
 
         <.modal_footer>
           <div class="flex gap-x-5 justify-end relative">

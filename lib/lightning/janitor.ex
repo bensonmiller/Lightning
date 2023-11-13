@@ -20,6 +20,7 @@ defmodule Lightning.Janitor do
 
   alias Lightning.Repo
   alias Lightning.Attempts
+  alias Lightning.Attempts
 
   @doc """
   The perform function takes an `%Oban.Job`, allowing this module to be invoked
@@ -53,6 +54,7 @@ defmodule Lightning.Janitor do
       Attempts.complete_attempt(att, {:lost, error_type, nil})
       # TODO - Implement this in https://github.com/OpenFn/Lightning/issues/1348
       # Attempts.mark_unfinished_runs_lost(att)
+      Attempts.mark_unfinished_runs_lost(att)
     end)
   end
 end

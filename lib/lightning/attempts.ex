@@ -21,6 +21,7 @@ defmodule Lightning.Attempts do
   alias Lightning.Attempt
   alias Lightning.Attempts.Events
   alias Lightning.Attempts.Handlers
+
   alias Lightning.Repo
 
   import Ecto.Query
@@ -231,5 +232,31 @@ defmodule Lightning.Attempts do
 
   defp adaptor do
     Lightning.Config.attempts_adaptor()
+  end
+
+  def mark_unfinished_runs_lost(%Attempt{id: attempt_id}) do
+    # Fetch all runs associated with the attempt
+    runs =
+      Repo.all(
+        from ar in Lightning.AttemptRun,
+          where: ar.attempt_id == ^attempt_id,
+          preload: [:run]
+      )
+
+    # Iterate over each run and mark it as lost if not finished
+    Enum.each(runs, fn %{run: run} ->
+      if run_not_finished?(run) do
+        mark_run_as_lost(run)
+      end
+    end)
+  end
+
+  defp run_not_finished?(%{finished_at: nil, exit_reason: nil}), do: true
+
+  defp run_not_finished?(_), do: false
+
+  defp mark_run_as_lost(run) do
+    updated_run = Ecto.Changeset.change(run, exit_reason: "lost")
+    Repo.update!(updated_run)
   end
 end

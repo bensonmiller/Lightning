@@ -767,7 +767,7 @@ defmodule LightningWeb.WorkflowLive.Components do
         </div>
       </:title>
       <.form
-        :let={f}
+
         for={@form}
         phx-change="validate_workflow_name"
         phx-submit="create_work_flow"
@@ -775,7 +775,7 @@ defmodule LightningWeb.WorkflowLive.Components do
         class="w-11/12 mx-auto"
       >
         <.input
-          field={f[:name]}
+          field={@form[:name]}
           type="text"
           label="Workflow Name"
           name="workflow_name"

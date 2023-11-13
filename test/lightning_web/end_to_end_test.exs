@@ -6,7 +6,10 @@ defmodule LightningWeb.EndToEndTest do
   import Lightning.JobsFixtures
   import Lightning.Factories
 
+  alias Lightning.Attempts
   alias Lightning.Invocation
+  alias Lightning.Repo
+  alias Lightning.WorkOrders
   alias Lightning.Runtime.RuntimeManager
 
   # workflow runs webhook then flow job
@@ -50,22 +53,22 @@ defmodule LightningWeb.EndToEndTest do
       assert %{"work_order_id" => wo_id} = json_response(conn, 200)
 
       assert %{attempts: [%{id: attempt_id}]} =
-               Lightning.WorkOrders.get(wo_id, include: [:attempts])
+               WorkOrders.get(wo_id, include: [:attempts])
 
-      assert %{runs: []} = Lightning.Attempts.get(attempt_id, include: [:runs])
+      assert %{runs: []} = Attempts.get(attempt_id, include: [:runs])
 
       assert %{attempts: [%{id: attempt_id}]} =
-               Lightning.WorkOrders.get(wo_id, include: [:attempts])
+               WorkOrders.get(wo_id, include: [:attempts])
 
       # wait to complete
       assert Enum.any?(1..50, fn _i ->
                Process.sleep(100)
-               %{state: state} = Lightning.Attempts.get(attempt_id)
+               %{state: state} = Attempts.get(attempt_id)
                state == :success
              end)
 
       assert %{state: :success, attempts: [%{runs: [run]}]} =
-               Lightning.WorkOrders.get(wo_id, include: [attempts: [:runs]])
+               WorkOrders.get(wo_id, include: [attempts: [:runs]])
 
       assert run.exit_reason == "success"
     end
@@ -134,35 +137,35 @@ defmodule LightningWeb.EndToEndTest do
       assert %{"work_order_id" => wo_id} = json_response(conn, 200)
 
       assert %{attempts: [%{id: attempt_id}]} =
-               Lightning.WorkOrders.get(wo_id, include: [:attempts])
+               WorkOrders.get(wo_id, include: [:attempts])
 
-      assert %{runs: []} = Lightning.Attempts.get(attempt_id, include: [:runs])
+      assert %{runs: []} = Attempts.get(attempt_id, include: [:runs])
 
       # wait to complete
       assert Enum.any?(1..50, fn _i ->
                Process.sleep(100)
-               %{state: state} = Lightning.Attempts.get(attempt_id)
+               %{state: state} = Attempts.get(attempt_id)
                state == :success
              end)
 
       %{runs: runs, claimed_at: claimed_at, finished_at: finished_at} =
         attempt =
-        Lightning.Attempts.get(attempt_id,
+        Attempts.get(attempt_id,
           include: [:runs, workflow: [:triggers, :jobs, :edges]]
         )
 
       Enum.each(runs, fn run ->
         with attempt_run <-
-               Lightning.Repo.get_by(Lightning.AttemptRun,
+               Repo.get_by(Lightning.AttemptRun,
                  run_id: run.id,
                  attempt_id: attempt.id
                ) do
-          from(r in Lightning.Invocation.Run, where: r.id == ^attempt_run.run_id)
-          |> Lightning.Repo.all()
+          from(r in Invocation.Run, where: r.id == ^attempt_run.run_id)
+          |> Repo.all()
           |> then(fn [r] ->
             p =
               Ecto.assoc(r, [:job, :project])
-              |> Lightning.Repo.one!()
+              |> Repo.one!()
 
             assert p.id == project.id,
                    "run is associated with a different project"
@@ -177,8 +180,6 @@ defmodule LightningWeb.EndToEndTest do
       assert NaiveDateTime.diff(run_1.finished_at, claimed_at, :microsecond) > 0
       assert NaiveDateTime.diff(run_1.finished_at, finished_at, :microsecond) < 0
       assert run_1.exit_reason == "success"
-
-      # assert Invocation.assemble_logs_for_run(run_1) =~ "Operation complete in"
 
       lines =
         Invocation.logs_for_run(run_1)

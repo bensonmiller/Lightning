@@ -767,7 +767,6 @@ defmodule LightningWeb.WorkflowLive.Components do
         </div>
       </:title>
       <.form
-
         for={@form}
         phx-change="validate_workflow_name"
         phx-submit="create_work_flow"

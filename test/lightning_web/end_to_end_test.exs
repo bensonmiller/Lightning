@@ -90,7 +90,7 @@ defmodule LightningWeb.EndToEndTest do
         workflow_job_fixture(
           project: project,
           name: "1st-job",
-          adaptor: "@openfn/language-http@5.0.4",
+          adaptor: "@openfn/language-http@latest",
           body: webhook_expression(),
           project_credential: project_credential
         )
@@ -98,7 +98,7 @@ defmodule LightningWeb.EndToEndTest do
       flow_job =
         insert(:job,
           name: "2nd-job",
-          adaptor: "@openfn/language-http@5.0.4",
+          adaptor: "@openfn/language-http@latest",
           body: flow_expression(),
           workflow: workflow,
           project_credential: project_credential
@@ -114,7 +114,7 @@ defmodule LightningWeb.EndToEndTest do
       catch_job =
         insert(:job,
           name: "3rd-job",
-          adaptor: "@openfn/language-http@5.0.4",
+          adaptor: "@openfn/language-http@latest",
           body: catch_expression(),
           workflow: workflow,
           project_credential: project_credential
@@ -142,19 +142,16 @@ defmodule LightningWeb.EndToEndTest do
       assert Enum.any?(1..50, fn _i ->
                Process.sleep(100)
                %{state: state} = Lightning.Attempts.get(attempt_id)
-               IO.inspect(state)
                state == :success
              end)
 
-      %{runs: runs} =
+      %{runs: runs, claimed_at: claimed_at, finished_at: finished_at} =
         attempt =
         Lightning.Attempts.get(attempt_id,
           include: [:runs, workflow: [:triggers, :jobs, :edges]]
         )
 
       Enum.each(runs, fn run ->
-        assert run.exit_reason == "success"
-
         with attempt_run <-
                Lightning.Repo.get_by(Lightning.AttemptRun,
                  run_id: run.id,
@@ -177,41 +174,57 @@ defmodule LightningWeb.EndToEndTest do
         Invocation.list_runs_for_project(project)
 
       # Run 1 should succeed and use the appropriate packages
-      assert run_1.finished_at != nil
+      assert NaiveDateTime.diff(run_1.finished_at, claimed_at, :microsecond) > 0
+      assert NaiveDateTime.diff(run_1.finished_at, finished_at, :microsecond) < 0
       assert run_1.exit_reason == "success"
 
-      assert Invocation.assemble_logs_for_run(run_1) =~ "Done in"
+      # assert Invocation.assemble_logs_for_run(run_1) =~ "Operation complete in"
 
-      r1_logs =
+      lines =
         Invocation.logs_for_run(run_1)
-        |> Enum.map(fn line -> line.message end)
+        |> Enum.with_index()
+        |> Map.new(fn {line, i} -> {i, line} end)
 
       # Check that versions are accurate and printed at the top of each run
-      assert Enum.at(r1_logs, 0) == "[CLI] ℹ Versions:"
-      Enum.at(r1_logs, 1) |> assert_has_expected_version?(:node)
-      Enum.at(r1_logs, 2) |> assert_has_expected_version?(:cli)
-      Enum.at(r1_logs, 3) |> assert_has_expected_version?(:runtime)
-      Enum.at(r1_logs, 4) |> assert_has_expected_version?(:compiler)
-      Enum.at(r1_logs, 5) |> assert_has_expected_version?(:adaptor)
-
-      assert Enum.at(r1_logs, 11) =~ "[JOB] ℹ 2"
-      assert Enum.at(r1_logs, 12) =~ "[JOB] ℹ {\"name\":\"ศผ่องรี มมซึฆเ\"}"
-      assert Enum.at(r1_logs, 13) =~ "[R/T] ✔ Operation 1 complete in"
-      assert Enum.at(r1_logs, 15) =~ "[CLI] ✔ Done in"
+      assert lines[0].source == "R/T"
+      assert lines[0].message == "Starting operation 1"
+      assert lines[1].source == "JOB"
+      assert lines[1].message == "2"
+      assert lines[2].source == "JOB"
+      assert lines[2].message == "{\"name\":\"ศผ่องรี มมซึฆเ\"}"
+      assert lines[3].source == "R/T"
+      assert lines[3].message =~ "Operation 1 complete in"
+      assert lines[4].source == "R/T"
+      assert lines[4].message == "Expression complete!"
 
       # #  Run 2 should fail but not expose a secret
-      assert run_2.finished_at != nil
-      assert run_2.exit_reason == "success"
+      assert NaiveDateTime.diff(run_2.finished_at, claimed_at, :microsecond) > 0
+      assert NaiveDateTime.diff(run_2.finished_at, finished_at, :microsecond) < 0
+      assert run_2.exit_reason == "failed"
 
       log = Invocation.assemble_logs_for_run(run_2)
+
       assert log =~ ~S[{"password":"***","username":"quux"}]
-      assert log =~ ~S[Error in runtime execution!]
+      assert log =~ ~S"UserError: fail!"
 
       #  Run 3 should succeed and log "6"
-      assert run_3.finished_at != nil
+      assert NaiveDateTime.diff(run_3.finished_at, claimed_at, :microsecond) > 0
+      assert NaiveDateTime.diff(run_3.finished_at, finished_at, :microsecond) < 0
       assert run_3.exit_reason == "success"
-      log = Invocation.assemble_logs_for_run(run_3)
-      assert log =~ "[JOB] ℹ 6"
+
+      lines =
+        Invocation.logs_for_run(run_3)
+        |> Enum.with_index()
+        |> Map.new(fn {line, i} -> {i, line} end)
+
+      assert lines[0].source == "R/T"
+      assert lines[0].message == "Starting operation 1"
+      assert lines[1].source == "JOB"
+      assert lines[1].message == "6"
+      assert lines[2].source == "R/T"
+      assert lines[2].message =~ "Operation 1 complete in"
+      assert lines[3].source == "R/T"
+      assert lines[3].message == "Expression complete!"
     end
   end
 

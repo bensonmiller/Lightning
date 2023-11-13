@@ -142,8 +142,6 @@ defmodule LightningWeb.AttemptChannel do
   end
 
   def handle_in("run:start", payload, socket) do
-    IO.inspect("run:start")
-
     Map.get(payload, "job_id", :missing_job_id)
     |> case do
       job_id when is_binary(job_id) ->
@@ -168,22 +166,23 @@ defmodule LightningWeb.AttemptChannel do
     end
   end
 
-  def handle_in("run:complete", payload, socket) do
-    IO.inspect("run:complete")
-
+  def handle_in(
+        "run:complete",
+        %{"reason" => reason} = payload,
+        socket
+      ) do
     %{
       "attempt_id" => socket.assigns.attempt.id,
-      "project_id" => socket.assigns.project_id
+      "project_id" => socket.assigns.project_id,
+      "reason" => "#{map_rtm_reason_state(reason)}"
     }
     |> Enum.into(payload)
     |> Attempts.complete_run()
-    |> IO.inspect()
     |> case do
       {:error, changeset} ->
         {:reply, {:error, LightningWeb.ChangesetJSON.error(changeset)}, socket}
 
       {:ok, run} ->
-        IO.inspect(Lightning.Jobs.get_job!(run.job_id))
         {:reply, {:ok, %{run_id: run.id}}, socket}
     end
   end
